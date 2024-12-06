@@ -1,0 +1,104 @@
+from PySide2 import QtWidgets, QtCore
+from shiboken2 import wrapInstance
+import maya.OpenMayaUI as omui
+import maya.cmds as cmds
+
+def get_maya_main_window():
+    """
+    Get Maya's main window as a PySide2 widget.
+    """
+    main_window_ptr = omui.MQtUtil.mainWindow()
+    return wrapInstance(int(main_window_ptr), QtWidgets.QWidget)
+
+class MyMayaWindow(QtWidgets.QDialog):
+    def __init__(self, parent=get_maya_main_window()):
+        super(MyMayaWindow, self).__init__(parent)
+
+        self.setWindowTitle("Fully Synced Slider with connectControl")
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowStaysOnTopHint)
+        self.setMinimumSize(300, 150)
+
+        # Variables
+        self.sphere_name = None
+        self.slider_name = "sphere_scale_slider"
+
+        # Layout
+        self.layout = QtWidgets.QVBoxLayout(self)
+
+        # Label to display the slider value
+        self.slider_label = QtWidgets.QLabel("Slider Value: 1.0")
+        self.layout.addWidget(self.slider_label)
+
+        # Add Maya's native slider using cmds.floatSliderGrp
+        self.slider_widget = cmds.floatSliderGrp(
+            self.slider_name,
+            label="Sphere Scale",
+            minValue=0.1,
+            maxValue=10.0,
+            field=True,  # Allows numeric input in addition to the slider
+            value=1.0
+        )
+        # Embed the slider into PySide2
+        slider_container = omui.MQtUtil.findControl(self.slider_name)
+        slider_widget = wrapInstance(int(slider_container), QtWidgets.QWidget)
+        self.layout.addWidget(slider_widget)
+
+        # Buttons
+        self.create_sphere_button = QtWidgets.QPushButton("Create Sphere")
+        self.close_button = QtWidgets.QPushButton("Close")
+        self.layout.addWidget(self.create_sphere_button)
+        self.layout.addWidget(self.close_button)
+
+        # Button connections
+        self.create_sphere_button.clicked.connect(self.create_sphere)
+        self.close_button.clicked.connect(self.close)
+
+    def create_sphere(self):
+        """
+        Create a sphere and connect its scale to the Maya slider using connectControl.
+        """
+        # Delete the existing sphere if it exists
+        if self.sphere_name:
+            cmds.delete(self.sphere_name)
+
+        # Create a new sphere
+        self.sphere_name = cmds.polySphere(name="SliderSphere")[0]
+
+        # Use connectControl to link the slider to the sphere's scale attributes
+        cmds.connectControl(self.slider_name, f"{self.sphere_name}.scaleX")
+        cmds.connectControl(self.slider_name, f"{self.sphere_name}.scaleY")
+        cmds.connectControl(self.slider_name, f"{self.sphere_name}.scaleZ")
+
+        # Update the label with the current slider value
+        slider_value = cmds.floatSliderGrp(self.slider_name, query=True, value=True)
+        self.slider_label.setText(f"Slider Value: {slider_value:.1f}")
+
+    def close(self):
+        """
+        Clean up and close the window.
+        """
+        # Disconnect the slider from the sphere's attributes
+        if self.sphere_name:
+            cmds.disconnectControl(self.slider_name, f"{self.sphere_name}.scaleX")
+            cmds.disconnectControl(self.slider_name, f"{self.sphere_name}.scaleY")
+            cmds.disconnectControl(self.slider_name, f"{self.sphere_name}.scaleZ")
+
+        super(MyMayaWindow, self).close()
+
+def show_window():
+    """
+    Show the PySide2 GUI window.
+    """
+    # Close any existing window
+    for widget in QtWidgets.QApplication.topLevelWidgets():
+        if isinstance(widget, MyMayaWindow):
+            widget.close()
+            widget.deleteLater()
+
+    # Create and show the new window
+    window = MyMayaWindow()
+    window.show()
+
+# Run the script
+if __name__ == "__main__":
+    show_window()
