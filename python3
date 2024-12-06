@@ -1,4 +1,4 @@
-from PySide2 import QtWidgets, QtCore
+from PySide2 import QtWidgets
 from shiboken2 import wrapInstance
 import maya.OpenMayaUI as omui
 import maya.cmds as cmds
@@ -45,13 +45,10 @@ class MyMayaWindow(QtWidgets.QDialog):
 
         # Buttons
         self.create_sphere_button = QtWidgets.QPushButton("Create Sphere")
-        self.close_button = QtWidgets.QPushButton("Close")
         self.layout.addWidget(self.create_sphere_button)
-        self.layout.addWidget(self.close_button)
 
-        # Button connections
+        # Button connection
         self.create_sphere_button.clicked.connect(self.create_sphere)
-        self.close_button.clicked.connect(self.close)
 
     def create_sphere(self):
         """
@@ -67,39 +64,9 @@ class MyMayaWindow(QtWidgets.QDialog):
         # Use connectControl to link the slider to the sphere's primary scale attribute (scaleX)
         cmds.connectControl(self.slider_name, f"{self.sphere_name}.scaleX")
 
-        # Create an expression to sync scaleY and scaleZ to scaleX
+        # Create a utility expression to sync scaleY and scaleZ with scaleX
         cmds.expression(s=f"{self.sphere_name}.scaleY = {self.sphere_name}.scaleX; {self.sphere_name}.scaleZ = {self.sphere_name}.scaleX;", object=self.sphere_name, alwaysEvaluate=True)
 
         # Update the label with the current slider value
         slider_value = cmds.floatSliderGrp(self.slider_name, query=True, value=True)
         self.slider_label.setText(f"Slider Value: {slider_value:.1f}")
-
-    def close(self):
-        """
-        Clean up and close the window.
-        """
-        # Disconnect the slider from the sphere's attributes
-        if self.sphere_name:
-            cmds.disconnectControl(self.slider_name, f"{self.sphere_name}.scaleX")
-            # Delete the expression when closing
-            cmds.delete(f"{self.sphere_name}_expr")
-
-        super(MyMayaWindow, self).close()
-
-def show_window():
-    """
-    Show the PySide2 GUI window.
-    """
-    # Close any existing window
-    for widget in QtWidgets.QApplication.topLevelWidgets():
-        if isinstance(widget, MyMayaWindow):
-            widget.close()
-            widget.deleteLater()
-
-    # Create and show the new window
-    window = MyMayaWindow()
-    window.show()
-
-# Run the script
-if __name__ == "__main__":
-    show_window()
