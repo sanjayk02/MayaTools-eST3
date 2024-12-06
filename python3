@@ -64,10 +64,11 @@ class MyMayaWindow(QtWidgets.QDialog):
         # Create a new sphere
         self.sphere_name = cmds.polySphere(name="SliderSphere")[0]
 
-        # Use connectControl to link the slider to the sphere's scale attributes
+        # Use connectControl to link the slider to the sphere's primary scale attribute (scaleX)
         cmds.connectControl(self.slider_name, f"{self.sphere_name}.scaleX")
-        cmds.connectControl(self.slider_name, f"{self.sphere_name}.scaleY")
-        cmds.connectControl(self.slider_name, f"{self.sphere_name}.scaleZ")
+
+        # Create an expression to sync scaleY and scaleZ to scaleX
+        cmds.expression(s=f"{self.sphere_name}.scaleY = {self.sphere_name}.scaleX; {self.sphere_name}.scaleZ = {self.sphere_name}.scaleX;", object=self.sphere_name, alwaysEvaluate=True)
 
         # Update the label with the current slider value
         slider_value = cmds.floatSliderGrp(self.slider_name, query=True, value=True)
@@ -80,8 +81,8 @@ class MyMayaWindow(QtWidgets.QDialog):
         # Disconnect the slider from the sphere's attributes
         if self.sphere_name:
             cmds.disconnectControl(self.slider_name, f"{self.sphere_name}.scaleX")
-            cmds.disconnectControl(self.slider_name, f"{self.sphere_name}.scaleY")
-            cmds.disconnectControl(self.slider_name, f"{self.sphere_name}.scaleZ")
+            # Delete the expression when closing
+            cmds.delete(f"{self.sphere_name}_expr")
 
         super(MyMayaWindow, self).close()
 
