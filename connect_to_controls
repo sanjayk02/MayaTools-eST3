@@ -1,0 +1,71 @@
+def connect_to_controls(self):
+    """Connect sliders to control attributes in Maya."""
+    float_min, float_max = 0.0, 10.0  # Define the float range for sliders
+
+    for slider_name, control_attr in self.slider_control_map.items():
+        # Get the slider and corresponding line edit widget
+        slider = getattr(self.ui, slider_name, None)
+        line_edit_name = slider_name.replace("slider", "lineEdit")  # Assuming consistent naming
+        line_edit = getattr(self.ui, line_edit_name, None)
+
+        if not slider or not line_edit:
+            logging.warning(f"Error: Slider '{slider_name}' or LineEdit '{line_edit_name}' not found!")
+            continue
+
+        # Query the initial value of the control attribute
+        try:
+            initial_value = cmds.getAttr(control_attr)
+        except RuntimeError:
+            cmds.warning(f"Failed to get attribute: {control_attr}")
+            continue
+
+        # Convert the initial value to the slider range
+        slider_value = int((initial_value - float_min) / (float_max - float_min) * 100)
+
+        # Initialize the slider and line edit
+        slider.setValue(slider_value)
+        line_edit.setText(f"{initial_value:.2f}")
+
+        # Connect slider valueChanged to update Maya attribute and line edit
+        slider.valueChanged.connect(
+            lambda value, attr=control_attr, le=line_edit: self.update_attribute_and_line_edit(value, attr, le, float_min, float_max)
+        )
+
+        # Connect line edit editingFinished to update Maya attribute and slider
+        line_edit.editingFinished.connect(
+            lambda le=line_edit, sl=slider, attr=control_attr: self.update_attribute_and_slider(le, sl, attr, float_min, float_max)
+        )
+
+def update_attribute_and_line_edit(self, slider_value, control_attr, line_edit, float_min, float_max):
+    """Update the Maya attribute and line edit based on the slider value."""
+    # Convert slider value to float
+    float_value = float_min + slider_value * (float_max - float_min) / 100
+
+    try:
+        # Set the Maya attribute
+        cmds.setAttr(control_attr, float_value)
+    except RuntimeError as e:
+        cmds.warning(f"Failed to set attribute: {control_attr}. Error: {e}")
+        return
+
+    # Update the corresponding line edit
+    line_edit.setText(f"{float_value:.2f}")
+
+def update_attribute_and_slider(self, line_edit, slider, control_attr, float_min, float_max):
+    """Update the Maya attribute and slider based on the line edit text."""
+    try:
+        # Parse the float value from the line edit
+        float_value = float(line_edit.text())
+        if not (float_min <= float_value <= float_max):
+            raise ValueError("Value out of range")
+
+        # Set the Maya attribute
+        cmds.setAttr(control_attr, float_value)
+
+        # Convert float value to slider range and update slider
+        slider_value = int((float_value - float_min) / (float_max - float_min) * 100)
+        slider.setValue(slider_value)
+    except ValueError:
+        logging.warning(f"Invalid input in {line_edit.objectName()}: {line_edit.text()}")
+    except RuntimeError as e:
+        cmds.warning(f"Failed to set attribute: {control_attr}. Error: {e}")
