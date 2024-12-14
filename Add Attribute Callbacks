@@ -1,0 +1,69 @@
+def create_callbacks(self):
+    """Create Maya callbacks to monitor attribute changes."""
+    for slider_name, control_attr in self.slider_control_map.items():
+        try:
+            # Parse node and attribute from the full path
+            node, attr = control_attr.split('.', 1)
+            if not cmds.objExists(node):
+                cmds.warning(f"Node {node} does not exist. Skipping callback setup.")
+                continue
+
+            # Create a callback for the attribute
+            callback_id = om.MNodeMessage.addAttributeChangedCallback(
+                self.get_mobject(node),
+                lambda msg, plug, otherPlug, attr=control_attr: self.on_attribute_changed(msg, plug, attr)
+            )
+            self.callback_id_map[control_attr] = callback_id
+        except Exception as e:
+            logging.error(f"Failed to create callback for {control_attr}: {e}")
+
+def get_mobject(self, node_name):
+    """Get the MObject for a Maya node."""
+    sel_list = om.MSelectionList()
+    sel_list.add(node_name)
+    mobject = om.MObject()
+    sel_list.getDependNode(0, mobject)
+    return mobject
+def on_attribute_changed(self, msg, plug, control_attr):
+    """Callback triggered when a Maya attribute is changed."""
+    if msg & om.MNodeMessage.kAttributeSet:
+        try:
+            # Get the updated value of the attribute
+            value = cmds.getAttr(control_attr)
+            float_min, float_max = 0.0, 10.0  # Float range for sliders
+
+            # Update the corresponding slider and line edit
+            for slider_name, attr in self.slider_control_map.items():
+                if attr == control_attr:
+                    slider = getattr(self.ui, slider_name, None)
+                    line_edit_name = slider_name.replace("slider", "lineEdit")
+                    line_edit = getattr(self.ui, line_edit_name, None)
+
+                    if slider and line_edit:
+                        slider_value = int((value - float_min) / (float_max - float_min) * 100)
+                        slider.setValue(slider_value)
+                        line_edit.setText(f"{value:.2f}")
+        except Exception as e:
+            logging.error(f"Error handling attribute change for {control_attr}: {e}")
+
+
+def remove_callbacks(self):
+    """Remove all Maya callbacks."""
+    for attr, callback_id in self.callback_id_map.items():
+        try:
+            om.MMessage.removeCallback(callback_id)
+            logging.info(f"Removed callback for {attr}")
+        except Exception as e:
+            logging.error(f"Failed to remove callback for {attr}: {e}")
+    self.callback_id_map.clear()
+
+def init_ui(self):
+    """Initialize the UI."""
+    self.ui.destroyed.connect(self.on_exit_code)
+    self.create_callbacks()
+
+def on_exit_code(self):
+    """Cleanup when the UI is closed."""
+    self.remove_callbacks()
+    logging.info("UI successfully closed.")
+    self.deleteLater()
