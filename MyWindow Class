@@ -1,0 +1,135 @@
+import os
+import logging
+from PySide2.QtWidgets import QMainWindow, QScrollArea, QVBoxLayout, QLabel, QMessageBox
+from PySide2.QtCore import Qt
+from PySide2 import QtUiTools
+import maya.OpenMayaUI as omui
+from shiboken2 import wrapInstance
+import maya.cmds as cmds
+
+# Import the CallbackManager
+from callback_manager import CallbackManager  # Ensure this matches the saved file name
+
+
+def get_maya_window():
+    """Get Maya's main window as a PySide2 object."""
+    main_window_ptr = omui.MQtUtil.mainWindow()
+    if not main_window_ptr:
+        raise RuntimeError("Failed to obtain Maya's main window.")
+    return wrapInstance(int(main_window_ptr), QMainWindow)
+
+
+def load_ui(ui_file, parent=None):
+    """Load the .ui file and return the corresponding widget."""
+    loader = QtUiTools.QUiLoader()
+    ui_file = QFile(ui_file)
+    if not ui_file.exists():
+        raise FileNotFoundError(f"UI file {ui_file.fileName()} not found.")
+    ui_file.open(QFile.ReadOnly)
+    ui_widget = loader.load(ui_file, parent)
+    ui_file.close()
+    if not ui_widget:
+        raise RuntimeError(f"Failed to load UI file {ui_file.fileName()}.")
+    return ui_widget
+
+
+class MyWindow(QMainWindow):
+    """Main window class."""
+
+    def __init__(self, parent=None):
+        super(MyWindow, self).__init__(parent)
+
+        # Initialize variables
+        self.callback_manager = CallbackManager()
+        self.slider_control_map = {
+            "sliderSacler01": "con_world_L.all_scale",
+            "sliderSacler02": "con_world_L.all_translate",
+        }
+
+        # Setup the UI
+        self.setWindowTitle("Master File Manager ver2.0")
+        self.resize(500, 700)
+
+        # Scrollable area
+        self.scroll_area = QScrollArea(self)
+        self.setCentralWidget(self.scroll_area)
+
+        # Initialize UI and callbacks
+        self.ui = None
+        self.init_ui()
+        self.create_callbacks()
+
+    def init_ui(self):
+        """Initialize the UI."""
+        # Load the main UI file
+        ui_file = os.path.join(os.path.dirname(__file__), "ui", "main02.ui")
+        if not os.path.exists(ui_file):
+            QMessageBox.critical(self, "Error", f"UI file not found: {ui_file}")
+            return
+        self.ui = load_ui(ui_file, parent=self)
+        self.scroll_area.setWidget(self.ui)
+        self.scroll_area.setWidgetResizable(True)
+
+    def create_callbacks(self):
+        """Create callbacks for sliders connected to Maya attributes."""
+        for slider_name, control_attr in self.slider_control_map.items():
+            try:
+                node, attr = control_attr.split('.', 1)
+                self.callback_manager.create_callback(
+                    node_name=node,
+                    attr_name=attr,
+                    callback_func=self.on_attribute_changed
+                )
+            except ValueError as e:
+                logging.error(f"Invalid attribute format for '{control_attr}': {e}")
+
+    def on_attribute_changed(self, msg, plug, other_plug):
+        """Handle Maya attribute changes."""
+        if not (msg & om.MNodeMessage.kAttributeSet):
+            return  # Skip non-relevant messages
+
+        try:
+            node_name = om.MFnDependencyNode(plug.node()).name()
+            attr_name = plug.partialName()
+            full_attr_name = f"{node_name}.{attr_name}"
+
+            if not cmds.objExists(full_attr_name):
+                logging.warning(f"Attribute '{full_attr_name}' no longer exists.")
+                return
+
+            value = cmds.getAttr(full_attr_name)
+
+            # Update the UI elements
+            for slider_name, mapped_attr in self.slider_control_map.items():
+                if mapped_attr == full_attr_name:
+                    slider = getattr(self.ui, slider_name, None)
+                    line_edit_name = slider_name.replace("slider", "lineEdit")
+                    line_edit = getattr(self.ui, line_edit_name, None)
+
+                    if slider and line_edit:
+                        float_min, float_max = 0.0, 10.0
+                        slider_value = int((value - float_min) / (float_max - float_min) * 100)
+                        slider.setValue(slider_value)
+                        line_edit.setText(f"{value:.2f}")
+        except Exception as e:
+            logging.error(f"Error handling attribute change: {e}")
+
+    def on_exit_code(self):
+        """Cleanup when the UI is closed."""
+        self.callback_manager.remove_all_callbacks()
+        self.callback_manager = None
+        self.deleteLater()
+
+
+def show_window():
+    """Show the window."""
+    global my_window
+    if 'my_window' in globals() and my_window is not None:
+        try:
+            my_window.close()
+            my_window.deleteLater()
+        except Exception as e:
+            logging.error(f"Error closing existing window: {e}")
+
+    my_window = MyWindow(parent=get_maya_window())
+    my_window.show()
