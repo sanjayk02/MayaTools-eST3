@@ -1,0 +1,75 @@
+import logging
+import maya.OpenMaya as om
+import maya.cmds as cmds
+
+
+class CallbackManager:
+    """Manages Maya attribute callbacks."""
+
+    def __init__(self):
+        self.callback_id_map = {}  # Store callback IDs for cleanup
+
+    def create_callback(self, node_name, attr_name, callback_func):
+        """
+        Create a callback for a specific attribute on a node.
+
+        Args:
+            node_name (str): Name of the Maya node.
+            attr_name (str): Name of the attribute to monitor.
+            callback_func (callable): Function to call when the attribute changes.
+        """
+        try:
+            if not cmds.objExists(node_name):
+                logging.warning(f"Node '{node_name}' does not exist.")
+                return False
+
+            if not cmds.attributeQuery(attr_name, node=node_name, exists=True):
+                logging.warning(f"Attribute '{attr_name}' does not exist on node '{node_name}'.")
+                return False
+
+            mobject = self._get_mobject(node_name)
+            if not mobject or mobject.isNull():
+                logging.error(f"Failed to retrieve a valid MObject for node '{node_name}'.")
+                return False
+
+            # Create the callback
+            callback_id = om.MNodeMessage.addAttributeChangedCallback(
+                mobject,
+                lambda msg, plug, other_plug: callback_func(msg, plug, other_plug)
+            )
+            self.callback_id_map[f"{node_name}.{attr_name}"] = callback_id
+            logging.info(f"Callback created for {node_name}.{attr_name}.")
+            return True
+        except Exception as e:
+            logging.error(f"Error creating callback for {node_name}.{attr_name}: {e}")
+            return False
+
+    def remove_all_callbacks(self):
+        """Remove all registered Maya callbacks."""
+        for key, callback_id in list(self.callback_id_map.items()):
+            try:
+                om.MMessage.removeCallback(callback_id)
+                logging.info(f"Callback removed for {key}.")
+                del self.callback_id_map[key]
+            except Exception as e:
+                logging.error(f"Error removing callback for {key}: {e}")
+
+    def _get_mobject(self, node_name):
+        """
+        Get the MObject for a Maya node.
+
+        Args:
+            node_name (str): The name of the Maya node.
+
+        Returns:
+            MObject: The MObject for the specified node, or None if not found.
+        """
+        try:
+            sel_list = om.MSelectionList()
+            sel_list.add(node_name)
+            mobject = om.MObject()
+            sel_list.getDependNode(0, mobject)
+            return mobject
+        except RuntimeError as e:
+            logging.error(f"Failed to get MObject for node '{node_name}': {e}")
+            return None
