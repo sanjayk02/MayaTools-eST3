@@ -1,0 +1,81 @@
+def on_exit_code(self):
+    """Cleanup when the UI is closed."""
+    self.remove_callbacks()  # Remove all Maya callbacks
+    self.disconnect_signals()  # Disconnect all signals
+    self.deleteLater()  # Delete the widget properly
+
+def disconnect_signals(self):
+    """Disconnect all signals from the UI."""
+    slider_label_map = {
+        "sliderSacler01": "lineEditSacler01",
+        "sliderSacler02": "lineEditSacler02",
+    }
+    for slider_name, lineEdit_name in slider_label_map.items():
+        slider = getattr(self.ui, slider_name, None)
+        lineEdit = getattr(self.ui, lineEdit_name, None)
+        if slider:
+            slider.valueChanged.disconnect()
+        if lineEdit:
+            lineEdit.editingFinished.disconnect()
+
+    dynamic_slider_label_map = {
+        "HeadSliderSize": "HeadLineEditSize",
+        "HeadSliderScaleX": "HeadLineEditScaleX",
+        "HeadSliderScaleY": "HeadLineEditScaleY",
+        "HeadSliderScaleZ": "HeadLineEditScaleZ",
+        "HeadSliderUpDn": "HeadLineEditUpDn",
+        "HeadSliderFntBack": "HeadLineEditFntBack",
+        "HeadSliderRotate": "HeadLineEditRotate",
+    }
+    for slider_name, lineEdit_name in dynamic_slider_label_map.items():
+        slider = getattr(self.headUI, slider_name, None)
+        lineEdit = getattr(self.headUI, lineEdit_name, None)
+        if slider:
+            slider.valueChanged.disconnect()
+        if lineEdit:
+            lineEdit.editingFinished.disconnect()
+
+def remove_callbacks(self):
+    """Remove all Maya callbacks."""
+    for attr, callback_id in self.callback_id_map.items():
+        try:
+            om.MMessage.removeCallback(callback_id)
+        except Exception as e:
+            logging.error(f"Error removing callback for {attr}: {e}")
+    self.callback_id_map.clear()  # Clear the callback map
+
+def on_attribute_changed(self, msg, plug, control_attr):
+    """Callback triggered when a Maya attribute is changed."""
+    if not (msg & om.MNodeMessage.kAttributeSet):
+        return  # Skip irrelevant messages
+
+    try:
+        value = cmds.getAttr(control_attr)
+        for slider_name, mapped_attr in self.slider_control_map.items():
+            if mapped_attr == control_attr:
+                slider = getattr(self.ui, slider_name, None)
+                line_edit_name = slider_name.replace("slider", "lineEdit")
+                line_edit = getattr(self.ui, line_edit_name, None)
+
+                if slider and not sip.isdeleted(slider):  # Check if slider is deleted
+                    slider_value = int((value - 0.0) / (10.0 - 0.0) * 100)
+                    slider.setValue(slider_value)
+
+                if line_edit and not sip.isdeleted(line_edit):  # Check if line edit is deleted
+                    line_edit.setText(f"{value:.2f}")
+    except Exception as e:
+        logging.error(f"Error handling attribute change for '{control_attr}': {e}")
+
+def show_window():
+    """Show the window."""
+    global my_window
+    if 'my_window' in globals() and my_window is not None:
+        try:
+            my_window.close()
+            my_window.deleteLater()
+        except Exception as e:
+            logging.error(f"Error closing existing window: {e}")
+        my_window = None  # Clear the reference
+
+    my_window = MyWindow(parent=get_maya_window())
+    my_window.show()
