@@ -1,0 +1,225 @@
+import os
+import maya.OpenMaya as om
+import maya.OpenMayaUI as omui
+import maya.cmds as cmds
+from functools import partial
+from shiboken2 import wrapInstance, isValid
+from PySide2.QtWidgets import QWidget, QMainWindow, QScrollArea, QLineEdit
+from PySide2.QtCore import QFile
+from PySide2 import QtUiTools
+
+# Paths and Styles
+SCRIPT_LOC = os.path.dirname(__file__)
+SLIDER_STYLESHEET = """
+QSlider::groove:horizontal {
+    border: 1px solid #999;
+    height: 6px;
+    background: #ccc;
+    margin: 0px;
+    border-radius: 3px;
+}
+QSlider::handle:horizontal {
+    background: #5c5c5c;
+    border: 1px solid #444;
+    width: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+"""
+
+def get_maya_window():
+    """Get Maya's main window as a PySide2 object."""
+    main_window_ptr = omui.MQtUtil.mainWindow()
+    if not main_window_ptr:
+        raise RuntimeError("Failed to obtain Maya's main window.")
+    return wrapInstance(int(main_window_ptr), QWidget)  # Replace 'long' with 'int'
+
+def load_ui(ui_file, parent=None):
+    """Load the .ui file and return the corresponding widget."""
+    loader = QtUiTools.QUiLoader()
+    ui_file = QFile(ui_file)
+    if not ui_file.exists():
+        raise FileNotFoundError("UI file {} not found.".format(ui_file.fileName()))
+    ui_file.open(QFile.ReadOnly)
+    ui_widget = loader.load(ui_file, parent)
+    ui_file.close()
+    if not ui_widget:
+        raise RuntimeError("Failed to load UI file {}.".format(ui_file.fileName()))
+    return ui_widget
+
+class CallbackManager:
+    """Manages attribute change callbacks for a Maya node."""
+    def __init__(self, node_name, slider_label_map, ui):
+        self.node_name = node_name
+        self.slider_label_map = slider_label_map
+        self.ui = ui
+        self.callback_id = None
+        self.attribute_map = {
+            'translateX': 'sliderSacler01',
+            'translateY': 'sliderSacler02',
+        }
+        self.create_callbacks()
+
+    def create_callbacks(self):
+        """Create a callback for the specified Maya node."""
+        if not cmds.objExists(self.node_name):
+            print(f"Node '{self.node_name}' does not exist. Cannot create callback.")
+            return
+
+        selection_list = om.MSelectionList()
+        selection_list.add(self.node_name)
+        self.node = om.MObject()
+        selection_list.getDependNode(0, self.node)
+        self.callback_id = om.MNodeMessage.addAttributeChangedCallback(self.node, self.attribute_changed)
+        print(f"Callback created for node '{self.node_name}'.")
+
+    def attribute_changed(self, msg, plug, other_plug, client_data):
+        """Callback function to update sliders and QLineEdits when Maya attributes change."""
+        if msg & om.MNodeMessage.kAttributeSet:
+            for attribute, slider_name in self.attribute_map.items():
+                if plug.partialName(False, False, False, False, False, True) == attribute:
+                    value = cmds.getAttr(f"{self.node_name}.{attribute}")
+                    slider = getattr(self.ui, slider_name, None)
+                    line_edit_name = self.slider_label_map.get(slider_name, None)
+                    line_edit = getattr(self.ui, line_edit_name, None)
+
+                    if slider and isValid(slider):
+                        slider.blockSignals(True)
+                        slider.setValue(int(value * 10))
+                        slider.blockSignals(False)
+
+                    if line_edit and isValid(line_edit):
+                        line_edit.setText(f"{value:.1f}")
+
+    def remove_callback(self):
+        """Remove the callback when the window is closed."""
+        if self.callback_id is not None:
+            om.MMessage.removeCallback(self.callback_id)
+            self.callback_id = None
+            print("Callback removed.")
+
+class MyWindow(QMainWindow):
+    """Main UI Window."""
+    def __init__(self, parent=None):
+        super(MyWindow, self).__init__(parent)
+
+        self.sphere_name = "pSphere1"
+        self.main_ui = os.path.join(SCRIPT_LOC, "ui", "main02.ui")
+        self.slider_label_map = {
+            'sliderSacler01': 'lineEditSacler01',
+            'sliderSacler02': 'lineEditSacler02',
+        }
+
+        if not os.path.exists(self.main_ui):
+            raise FileNotFoundError(f"UI file not found: {self.main_ui}")
+
+        # Load UI
+        self.ui = load_ui(self.main_ui, parent=self)
+        self.setWindowTitle("Maya Attribute Controller")
+        self.resize(500, 700)
+
+        # Scrollable Area
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidget(self.ui)
+        self.scroll_area.setWidgetResizable(True)
+        self.setCentralWidget(self.scroll_area)
+
+        # Configure UI
+        self.setup_sliders()
+        self.connect_sliders()
+        self.initialize_ui_values()
+
+        # Initialize the Callback Manager
+        self.callback_manager = CallbackManager(self.sphere_name, self.slider_label_map, self.ui)
+
+    def setup_sliders(self):
+        """Apply stylesheets to sliders."""
+        for slider_name in self.slider_label_map.keys():
+            slider = getattr(self.ui, slider_name, None)
+            if slider:
+                slider.setStyleSheet(SLIDER_STYLESHEET)
+                slider.setMinimum(0)
+                slider.setMaximum(100)
+
+    def connect_sliders(self):
+        """Connect sliders and QLineEdits to update Maya attributes."""
+        slider_attr_map = {
+            'sliderSacler01': 'translateX',
+            'sliderSacler02': 'translateY',
+        }
+
+        for slider_name, attribute in slider_attr_map.items():
+            slider = getattr(self.ui, slider_name, None)
+            line_edit_name = self.slider_label_map.get(slider_name)
+            line_edit = getattr(self.ui, line_edit_name, None)
+
+            # Connect slider to update Maya attribute and QLineEdit
+            if slider:
+                slider.valueChanged.connect(partial(self.update_attribute_from_slider, attribute, slider_name))
+
+            # Connect QLineEdit to update Maya attribute and QSlider
+            if line_edit and slider:
+                line_edit.editingFinished.connect(partial(self.update_slider_from_line_edit, line_edit, slider, attribute))
+
+    def update_attribute_from_slider(self, attribute, slider_name, slider_value):
+        """Update Maya attribute and QLineEdit when slider is moved."""
+        float_value = slider_value / 10.0
+        if cmds.objExists(self.sphere_name):
+            cmds.setAttr(f"{self.sphere_name}.{attribute}", float_value)
+        # Update QLineEdit
+        line_edit_name = self.slider_label_map.get(slider_name)
+        line_edit = getattr(self.ui, line_edit_name, None)
+        if line_edit:
+            line_edit.setText(f"{float_value:.1f}")
+
+    def update_slider_from_line_edit(self, line_edit, slider, attribute):
+        """Update slider and Maya attribute when QLineEdit value is changed."""
+        try:
+            float_value = float(line_edit.text())
+            slider_value = int(float_value * 10)
+
+            # Update the QSlider
+            slider.blockSignals(True)
+            slider.setValue(slider_value)
+            slider.blockSignals(False)
+
+            # Update Maya attribute
+            if cmds.objExists(self.sphere_name):
+                cmds.setAttr(f"{self.sphere_name}.{attribute}", float_value)
+
+        except ValueError:
+            print("Invalid input in QLineEdit. Please enter a numeric value.")
+
+    def initialize_ui_values(self):
+        """Initialize slider and QLineEdit values with Maya attribute values."""
+        slider_attr_map = {
+            'sliderSacler01': 'translateX',
+            'sliderSacler02': 'translateY',
+        }
+        for slider_name, attribute in slider_attr_map.items():
+            if cmds.objExists(self.sphere_name):
+                current_value = cmds.getAttr(f"{self.sphere_name}.{attribute}")
+                slider = getattr(self.ui, slider_name, None)
+                line_edit_name = self.slider_label_map.get(slider_name)
+                line_edit = getattr(self.ui, line_edit_name, None)
+
+                if slider:
+                    slider.setValue(int(current_value * 10))
+                if line_edit:
+                    line_edit.setText(f"{current_value:.1f}")
+
+    def closeEvent(self, event):
+        """Clean up when the window is closed."""
+        self.callback_manager.remove_callback()
+        event.accept()
+
+def show_window():
+    """Show the window."""
+    global my_window
+    try:
+        my_window.close()
+        my_window.deleteLater()
+    except:
+        pass
+    my_window = MyWindow(parent=get_maya_window())
+    my_window.show()
