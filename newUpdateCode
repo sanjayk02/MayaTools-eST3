@@ -70,7 +70,7 @@ class CallbackManager:
         self.callback_id = om.MNodeMessage.addAttributeChangedCallback(self.node, self.attribute_changed)
 
     def attribute_changed(self, msg, plug, other_plug, client_data):
-        """Callback to update sliders and QLineEdit when attributes change."""
+        """Callback to update sliders and QLineEdit when Maya attributes change."""
         if not (msg & om.MNodeMessage.kAttributeSet):
             return
 
@@ -84,7 +84,7 @@ class CallbackManager:
                 # Update slider
                 if slider and isValid(slider):
                     slider.blockSignals(True)
-                    slider.setValue(int(value * 10))
+                    slider.setValue(int(value * 10))  # Scale value to slider
                     slider.blockSignals(False)
 
                 # Update QLineEdit
