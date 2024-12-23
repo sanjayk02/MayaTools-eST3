@@ -1,0 +1,64 @@
+import logging
+from PyQt5.QtWidgets import QVBoxLayout
+
+class CollapsibleUIManager:
+    def __init__(self, ui):
+        self.ui = ui
+        self.tabs = []
+
+    def add_ui_widget(self):
+        """Add collapsible functionality to the layout."""
+        # Dictionary to map tab titles to their corresponding collapsible widgets
+        widget_data = {
+            "HEAD-TAB": collapseWidgetUI,
+            "NECK-TAB": collapseNeckUI,
+            "NOSE-TAB": collapseNoseUI,
+            "Ear-TAB": collapseEarUI,
+            "Shoulder-TAB": collapseShoulderrUI,
+            "Arm-TAB": collapseArmUI,
+            "Hand-TAB": collapseHandUI,
+            "Torso-TAB": collapseTorsoUI,
+            "Leg-TAB": collapseLegUI,
+            "Foot-TAB": collapseFootUI,
+        }
+
+        # Ensure the main layout exists
+        main_layout = getattr(self.ui, "CollapseLayout", None)
+        if not main_layout:
+            logging.warning("Main layout not found. Creating a new QVBoxLayout.")
+            main_layout = QVBoxLayout()
+            self.ui.setLayout(main_layout)
+
+        # Helper function to create tabs
+        def create_tab(title, content):
+            try:
+                tab = Collapsible.CollapsibleTab(title)
+                tab.content_layout.addWidget(content)
+                main_layout.addWidget(tab)
+                self.tabs.append(tab)
+                logging.info(f"Created {title} tab successfully.")
+            except Exception as e:
+                logging.error(f"Failed to create tab {title}: {e}")
+
+        # Create tabs dynamically
+        for title, widget_collapse in widget_data.items():
+            try:
+                ui_widget = LoadCollapsed_widget._loadWidget(widgetCollapse=widget_collapse)._loadUI()
+                create_tab(title, ui_widget)
+            except Exception as e:
+                logging.error(f"Failed to load widget for {title}: {e}")
+
+        main_layout.addStretch()  # Add stretch to push tabs to the top
+
+    def connection(self):
+        """Connect button actions to specific tab operations."""
+        # Example connection for expanding the HEAD-TAB
+        self.ui.pushButton_2.clicked.connect(lambda: self.expand_tab("HEAD-TAB"))
+
+    def expand_tab(self, tab_title):
+        """Collapse all tabs and expand only the specified tab."""
+        for tab in self.tabs:
+            if tab.toggle_button.text() == tab_title:
+                tab.expand()  # Expand the specified tab
+            else:
+                tab.collapse()  # Collapse all other tabs
