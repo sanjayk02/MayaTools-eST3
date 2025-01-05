@@ -1,0 +1,127 @@
+import maya.OpenMaya as om
+import maya.OpenMayaUI as omui
+import maya.cmds as cmds
+from shiboken2 import wrapInstance, isValid
+from PySide2.QtWidgets import QSlider, QLineEdit
+
+class CallbackManager:
+    """Manages attribute change callbacks for a Maya node."""
+    
+    def __init__(self, control: str, slider_name: str, LineEdit: str, attribute: str, ui_object: object, scaling_factor: int = 10):
+        """
+        Initialize the CallbackManager.
+
+        :param control: Name of the Maya node to monitor.
+        :param slider_name: Name of the slider widget in the UI.
+        :param LineEdit: Name of the label widget in the UI.
+        :param attribute: Name of the Maya node's attribute to monitor.
+        :param ui_object: Reference to the UI object containing the slider and label.
+        :param scaling_factor: Factor to scale the attribute value for the slider.
+        """
+        self.node_name = control
+        self.sliderName = slider_name
+        self.lineEdit = LineEdit
+        self.attribute = attribute
+        self.ui = ui_object
+        self.scaling_factor = scaling_factor
+        self.callback_id = None
+        self._last_value = None  # To optimize updates
+        self.create_callbacks()
+
+    def create_callbacks(self):
+        """Create a callback for the specified Maya node."""
+        if not cmds.objExists(self.node_name):
+            print(f"Node '{self.node_name}' does not exist. Cannot create callback.")
+            return
+
+        if not cmds.attributeQuery(self.attribute, node=self.node_name, exists=True):
+            print(f"Error: Attribute '{self.attribute}' does not exist on node '{self.node_name}'.")
+            return
+
+        selection_list = om.MSelectionList()
+        selection_list.add(self.node_name)
+        self.node = om.MObject()
+        selection_list.getDependNode(0, self.node)
+
+        try:
+            self.callback_id = om.MNodeMessage.addAttributeChangedCallback(self.node, self.attribute_changed)
+            print(f"Callback created for node '{self.node_name}'.")
+        except Exception as e:
+            print(f"Error: Failed to create callback for node '{self.node_name}'. Exception: {e}")
+
+    def attribute_changed(self, msg, plug, other_plug, client_data):
+        """
+        Callback function to update sliders and labels when Maya attributes change.
+
+        :param msg: Message from Maya.
+        :param plug: Attribute that changed.
+        :param other_plug: Other plug involved in the change (if any).
+        :param client_data: Client data passed to the callback.
+        """
+        if msg & om.MNodeMessage.kAttributeSet:
+            if plug.partialName(False, False, False, False, False, True) == self.attribute:
+                try:
+                    value = cmds.getAttr(f"{self.node_name}.{self.attribute}")
+                    
+                    # Skip update if the value hasn't changed
+                    if self._last_value == value:
+                        return
+                    self._last_value = value
+                except Exception as e:
+                    print(f"Error: Unable to retrieve attribute '{self.attribute}' for node '{self.node_name}'. Exception: {e}")
+                    return
+
+                # Get the corresponding slider and label
+                slider = getattr(self.ui, self.sliderName, None)
+                label = getattr(self.ui, self.lineEdit, None)
+
+                # Validate and update slider
+                if slider and hasattr(slider, "blockSignals") and callable(slider.blockSignals):
+                    try:
+                        slider.blockSignals(True)
+                        slider.setValue(int(value * self.scaling_factor))
+                        slider.blockSignals(False)
+                    except Exception as e:
+                        print(f"Error: Unable to update slider for attribute '{self.attribute}'. Exception: {e}")
+                else:
+                    print(f"Error: Slider for attribute '{self.attribute}' is not valid or not found.")
+
+                # Validate and update label
+                if label and hasattr(label, "setText") and callable(label.setText):
+                    try:
+                        label.setText(f"{value:.1f}")  # Format to one decimal place
+                    except Exception as e:
+                        print(f"Error: Unable to update label for attribute '{self.lineEdit}'. Exception: {e}")
+                else:
+                    print(f"Error: Label for attribute '{self.lineEdit}' is not valid or not found.")
+
+    def remove_callback(self):
+        """Remove the callback when the window is closed."""
+        if self.callback_id is not None:
+            try:
+                om.MMessage.removeCallback(self.callback_id)
+                self.callback_id = None
+                print("Callback removed.")
+            except Exception as e:
+                print(f"Error: Unable to remove callback. Exception: {e}")
+===================================================================================================
+# Example UI setup (replace with your actual UI implementation)
+class ExampleUI:
+    def __init__(self):
+        self.mySlider = QSlider()  # Example PySide2 slider
+        self.myLabel = QLineEdit()  # Example PySide2 label
+
+ui_object = ExampleUI()
+
+# Initialize the CallbackManager
+node_name = "myNode"
+slider_name = "mySlider"
+line_edit = "myLabel"
+attribute = "myAttr"
+scaling_factor = 20
+
+callback_manager = CallbackManager(node_name, slider_name, line_edit, attribute, ui_object, scaling_factor)
+
+# Clean up callback when done
+callback_manager.remove_callback()
+
