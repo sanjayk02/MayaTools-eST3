@@ -1,0 +1,14 @@
+{
+    "dynamic": {
+      
+      "row1": [
+        ["Label1", "LineEdit1", "Slider1", "Button1", "Sphere", "1.0", "translateX","resetBtn1", "resetAttr1"],
+        ["Label2", "LineEdit2", "Slider2", "Button2", "Sphere", "0.0", "translateY", "resetBtn2", "resetAttr2"]
+      ],
+
+      "row2": [
+        ["Label3", "LineEdit3", "Slider3", "Button3", "SphereA", "0.5", "translateX", "resetBtn3", "resetAttr3"]
+      ]
+    }
+  }
+  
