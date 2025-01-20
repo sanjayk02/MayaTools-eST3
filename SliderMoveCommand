@@ -1,0 +1,97 @@
+import sys
+from PySide2.QtWidgets import (
+    QApplication, QMainWindow, QSlider, QVBoxLayout, QWidget,
+    QLabel, QAction, QUndoStack, QUndoCommand
+)
+from PySide2.QtCore import Qt
+
+
+class SliderMoveCommand(QUndoCommand):
+    def __init__(self, slider, label, old_value, new_value):
+        super(SliderMoveCommand, self).__init__(f"Move slider {old_value} -> {new_value}")
+        self.slider = slider
+        self.label = label
+        self.old_value = old_value
+        self.new_value = new_value
+
+    def undo(self):
+        # Temporarily block signals to prevent recursion
+        self.slider.blockSignals(True)
+        self.slider.setValue(int(self.old_value * 10))  # Convert to integer for slider
+        self.slider.blockSignals(False)
+        self.update_label(self.old_value)
+
+    def redo(self):
+        # Redo is removed, so no action here
+        pass
+
+    def update_label(self, value):
+        self.label.setText(f"Value: {value:.2f}")  # Format to 2 decimal places
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super(MainWindow, self).__init__()
+        self.setWindowTitle("Slider Undo Example with Float Values")
+        self.undo_stack = QUndoStack(self)
+        
+        # Slider setup (using integer values internally, float values are mapped)
+        self.slider = QSlider()
+        self.slider.setOrientation(Qt.Horizontal)
+        self.slider.setMinimum(0)      # Minimum value (integer)
+        self.slider.setMaximum(1000)   # Maximum value (integer)
+        self.slider.setSingleStep(1)   # Single step for internal slider
+        
+        # Label to display current value
+        self.label = QLabel(f"Value: {self.slider.value() / 10:.2f}")  # Display as float (1 decimal)
+
+        # Undo action
+        undo_action = QAction("Undo", self)
+        undo_action.setShortcut("Ctrl+Z")
+        undo_action.triggered.connect(self.undo_stack.undo)
+        self.addAction(undo_action)
+        
+        # Layout setup
+        layout = QVBoxLayout()
+        layout.addWidget(self.label)
+        layout.addWidget(self.slider)
+        
+        container = QWidget()
+        container.setLayout(layout)
+        self.setCentralWidget(container)
+        
+        self.last_value = self.slider.value() / 10.0  # Store the float value
+        self.slider.setValue(int(self.last_value * 10))  # Convert to integer for slider
+
+        self.is_dragging = False  # To track whether dragging is happening
+
+        # Track slider changes, only store when mouse is released
+        self.slider.sliderReleased.connect(self.on_slider_released)
+        self.slider.valueChanged.connect(self.on_slider_value_changed)
+
+    def on_slider_value_changed(self, value):
+        # This is to track the value while dragging or clicking
+        self.current_value = value / 10.0  # Convert to float value
+
+    def on_slider_released(self):
+        # Only store the value when the user finishes dragging (mouse release)
+        old_value = self.last_value
+        new_value = self.current_value
+        
+        if old_value != new_value:  # Only store if there's a change
+            self.undo_stack.push(SliderMoveCommand(self.slider, self.label, old_value, new_value))
+            self.last_value = new_value  # Update last_value after storing
+
+        # Update the label with the current value
+        self.update_label(self.last_value)
+
+    def update_label(self, value):
+        # Update label with formatted float value
+        self.label.setText(f"Value: {value:.2f}")  # Format to 2 decimal places
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())
